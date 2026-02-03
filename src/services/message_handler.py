@@ -1,10 +1,11 @@
 """
 Message Handler Service for the Multi-Agent Chat Threading System.
 Coordinates message processing, context assembly, and LLM interaction.
+Includes token usage tracking for cost monitoring.
 """
 
 import asyncio
-from typing import List, Dict, Any, Optional
+from typing import List, Dict, Any, Optional, TYPE_CHECKING
 from uuid import UUID, uuid4
 from datetime import datetime
 from sqlalchemy import select
@@ -18,6 +19,9 @@ from src.config import settings
 from src.constants import CONTEXT_SUMMARY_PREFIX
 from src.utils.logging import get_logger
 
+if TYPE_CHECKING:
+    from src.services.usage_tracker import UsageTracker
+
 logger = get_logger("message_handler")
 
 
@@ -25,12 +29,14 @@ class MessageHandler:
     """
     Handler for processing user messages and generating responses.
     Manages context assembly, summarization triggers, and thread-level concurrency.
+    Tracks token usage for cost monitoring.
     """
     
     def __init__(
         self,
         llm_orchestrator: LLMOrchestrator,
-        summarization_engine: SummarizationEngine
+        summarization_engine: SummarizationEngine,
+        usage_tracker: Optional["UsageTracker"] = None
     ):
         """
         Initialize the Message Handler.
@@ -38,9 +44,11 @@ class MessageHandler:
         Args:
             llm_orchestrator: LLM orchestrator for generating responses
             summarization_engine: Engine for generating summaries
+            usage_tracker: Optional usage tracker for cost monitoring
         """
         self.llm = llm_orchestrator
         self.summarizer = summarization_engine
+        self.usage_tracker = usage_tracker
         
         # Thread-level locks to prevent concurrent message processing
         self._locks: Dict[str, asyncio.Lock] = {}
@@ -161,6 +169,19 @@ class MessageHandler:
                 thread_current_model=thread.current_model,
                 requested_model=requested_model
             )
+            
+            # 6.5 Track token usage
+            if self.usage_tracker and response.get("usage"):
+                usage_data = response.get("usage", {})
+                await self.usage_tracker.track_usage(
+                    model=response["model"],
+                    input_tokens=usage_data.get("prompt_tokens", 0),
+                    output_tokens=usage_data.get("completion_tokens", 0),
+                    operation_type="message",
+                    thread_id=thread_id,
+                    user_id=thread.user_id,
+                    extra_data={"message_type": "assistant_response"}
+                )
             
             # 7. Save assistant message
             async with async_session_maker() as session:

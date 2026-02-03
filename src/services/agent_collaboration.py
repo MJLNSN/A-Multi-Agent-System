@@ -5,10 +5,11 @@ Implements a multi-agent collaboration pattern where different AI agents
 (Planner, Writer, Reviewer) work together to produce high-quality responses.
 
 This demonstrates true multi-agent orchestration beyond simple model switching.
+Includes token usage tracking for cost monitoring.
 """
 
 import asyncio
-from typing import Dict, List, Any, Optional
+from typing import Dict, List, Any, Optional, TYPE_CHECKING
 from uuid import uuid4
 from datetime import datetime
 from dataclasses import dataclass
@@ -16,6 +17,9 @@ from enum import Enum
 
 from src.adapters.openrouter import OpenRouterAdapter
 from src.utils.logging import get_logger
+
+if TYPE_CHECKING:
+    from src.services.usage_tracker import UsageTracker
 
 logger = get_logger("agent_collaboration")
 
@@ -95,16 +99,23 @@ class AgentCollaborationService:
     3. Query + Plan + Draft → Reviewer (final polish)
     
     Each step uses a different LLM model optimized for that role.
+    Tracks token usage for cost monitoring.
     """
     
-    def __init__(self, openrouter_adapter: OpenRouterAdapter):
+    def __init__(
+        self,
+        openrouter_adapter: OpenRouterAdapter,
+        usage_tracker: Optional["UsageTracker"] = None
+    ):
         """
         Initialize the Agent Collaboration Service.
         
         Args:
             openrouter_adapter: OpenRouter API adapter for LLM calls
+            usage_tracker: Optional usage tracker for cost monitoring
         """
         self.adapter = openrouter_adapter
+        self.usage_tracker = usage_tracker
         self.agents = DEFAULT_AGENTS.copy()
     
     def get_agent_config(self, role: AgentRole) -> AgentConfig:
@@ -185,7 +196,20 @@ Create a clear plan for answering this question. Output 3-5 bullet points."""
         )
         
         plan = planner_response["content"]
-        total_tokens += planner_response.get("tokens", 0)
+        planner_tokens = planner_response.get("tokens", 0)
+        total_tokens += planner_tokens
+        
+        # Track planner usage
+        if self.usage_tracker:
+            usage_data = planner_response.get("usage", {})
+            await self.usage_tracker.track_usage(
+                model=planner_config.model,
+                input_tokens=usage_data.get("prompt_tokens", 0),
+                output_tokens=usage_data.get("completion_tokens", 0),
+                operation_type="collaboration",
+                collaboration_id=collaboration_id,
+                extra_data={"agent_role": "planner", "step": 1}
+            )
         
         process_steps.append({
             "step": 1,
@@ -193,7 +217,7 @@ Create a clear plan for answering this question. Output 3-5 bullet points."""
             "model": planner_config.model,
             "input": planner_prompt[:200] + "..." if len(planner_prompt) > 200 else planner_prompt,
             "output": plan,
-            "tokens": planner_response.get("tokens", 0)
+            "tokens": planner_tokens
         })
         
         # ============================================================
@@ -221,7 +245,20 @@ Based on this plan, write a comprehensive response addressing each point."""
         )
         
         draft = writer_response["content"]
-        total_tokens += writer_response.get("tokens", 0)
+        writer_tokens = writer_response.get("tokens", 0)
+        total_tokens += writer_tokens
+        
+        # Track writer usage
+        if self.usage_tracker:
+            usage_data = writer_response.get("usage", {})
+            await self.usage_tracker.track_usage(
+                model=writer_config.model,
+                input_tokens=usage_data.get("prompt_tokens", 0),
+                output_tokens=usage_data.get("completion_tokens", 0),
+                operation_type="collaboration",
+                collaboration_id=collaboration_id,
+                extra_data={"agent_role": "writer", "step": 2}
+            )
         
         process_steps.append({
             "step": 2,
@@ -229,7 +266,7 @@ Based on this plan, write a comprehensive response addressing each point."""
             "model": writer_config.model,
             "input": f"Question + Plan ({len(plan)} chars)",
             "output": draft[:500] + "..." if len(draft) > 500 else draft,
-            "tokens": writer_response.get("tokens", 0)
+            "tokens": writer_tokens
         })
         
         # ============================================================
@@ -260,7 +297,20 @@ Review this draft and provide the final, polished response. Fix any issues but k
         )
         
         final_response = reviewer_response["content"]
-        total_tokens += reviewer_response.get("tokens", 0)
+        reviewer_tokens = reviewer_response.get("tokens", 0)
+        total_tokens += reviewer_tokens
+        
+        # Track reviewer usage
+        if self.usage_tracker:
+            usage_data = reviewer_response.get("usage", {})
+            await self.usage_tracker.track_usage(
+                model=reviewer_config.model,
+                input_tokens=usage_data.get("prompt_tokens", 0),
+                output_tokens=usage_data.get("completion_tokens", 0),
+                operation_type="collaboration",
+                collaboration_id=collaboration_id,
+                extra_data={"agent_role": "reviewer", "step": 3}
+            )
         
         process_steps.append({
             "step": 3,
@@ -268,7 +318,7 @@ Review this draft and provide the final, polished response. Fix any issues but k
             "model": reviewer_config.model,
             "input": f"Question + Plan + Draft ({len(draft)} chars)",
             "output": final_response[:500] + "..." if len(final_response) > 500 else final_response,
-            "tokens": reviewer_response.get("tokens", 0)
+            "tokens": reviewer_tokens
         })
         
         # ============================================================
@@ -284,16 +334,37 @@ Review this draft and provide the final, polished response. Fix any issues but k
             duration_ms=duration_ms
         )
         
+        # Calculate estimated cost
+        estimated_cost = None
+        if self.usage_tracker:
+            # Sum up costs from all steps (rough estimate based on total tokens)
+            planner_cost = self.usage_tracker.calculate_cost(
+                planner_config.model, planner_tokens // 2, planner_tokens // 2
+            )
+            writer_cost = self.usage_tracker.calculate_cost(
+                writer_config.model, writer_tokens // 2, writer_tokens // 2
+            )
+            reviewer_cost = self.usage_tracker.calculate_cost(
+                reviewer_config.model, reviewer_tokens // 2, reviewer_tokens // 2
+            )
+            estimated_cost = {
+                "planner": planner_cost["total"],
+                "writer": writer_cost["total"],
+                "reviewer": reviewer_cost["total"],
+                "total": round(planner_cost["total"] + writer_cost["total"] + reviewer_cost["total"], 6)
+            }
+        
         result = {
             "collaboration_id": collaboration_id,
             "final_response": final_response,
             "metadata": {
                 "total_tokens": total_tokens,
                 "duration_ms": round(duration_ms, 2),
+                "estimated_cost_usd": estimated_cost,
                 "agents_used": [
-                    {"role": AgentRole.PLANNER.value, "model": planner_config.model},
-                    {"role": AgentRole.WRITER.value, "model": writer_config.model},
-                    {"role": AgentRole.REVIEWER.value, "model": reviewer_config.model}
+                    {"role": AgentRole.PLANNER.value, "model": planner_config.model, "tokens": planner_tokens},
+                    {"role": AgentRole.WRITER.value, "model": writer_config.model, "tokens": writer_tokens},
+                    {"role": AgentRole.REVIEWER.value, "model": reviewer_config.model, "tokens": reviewer_tokens}
                 ],
                 "timestamp": start_time.isoformat()
             }

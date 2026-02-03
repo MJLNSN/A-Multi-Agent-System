@@ -12,6 +12,7 @@ A production-ready multi-agent chat service demonstrating threaded context manag
 - **Auto-Summarization** - Compress context every 10 messages
 - **Token Management** - Intelligent context trimming
 - **🚀 Multi-Agent Collaboration** - Planner → Writer → Reviewer pattern
+- **💰 Token & Cost Tracking** - Enterprise-grade usage monitoring and cost analysis
 
 ## 🌟 Multi-Agent Collaboration (Highlight Feature)
 
@@ -45,6 +46,37 @@ curl -X POST http://localhost:8001/api/collaborate \
 - `metadata`: Token usage, timing, models used
 
 This demonstrates **real multi-agent orchestration** beyond simple model switching!
+
+## 💰 Usage & Cost Tracking
+
+Monitor token usage and costs across all API calls with enterprise-grade tracking:
+
+```bash
+# Get usage summary (last 30 days)
+curl http://localhost:8001/api/usage/summary?days=30
+
+# Get thread-specific usage
+curl http://localhost:8001/api/usage/thread/{thread_id}
+
+# Get daily usage trends
+curl http://localhost:8001/api/usage/daily?days=7
+
+# Get model comparison
+curl http://localhost:8001/api/usage/models
+
+# Get model pricing
+curl http://localhost:8001/api/usage/pricing
+
+# Estimate cost before making a request
+curl "http://localhost:8001/api/usage/estimate?model=openai/gpt-4-turbo&input_tokens=1000&output_tokens=500"
+```
+
+**Response includes:**
+- Total tokens (input/output)
+- Cost breakdown by model
+- Cost breakdown by operation type (message, collaboration, summarization)
+- Daily usage trends
+- Model efficiency comparison
 
 ## Quick Start
 
@@ -90,6 +122,11 @@ cd scripts/
 | **`/api/collaborate`** | **POST** | **🚀 Multi-agent collaboration** |
 | `/api/agents` | GET | List collaboration agents |
 | `/api/agents/{role}` | PATCH | Update agent's model |
+| **`/api/usage/summary`** | **GET** | **💰 Usage & cost summary** |
+| `/api/usage/thread/{id}` | GET | Thread usage details |
+| `/api/usage/daily` | GET | Daily usage trends |
+| `/api/usage/models` | GET | Model comparison |
+| `/api/usage/pricing` | GET | Model pricing info |
 
 ### Example
 
@@ -150,7 +187,7 @@ Effective Model = message.model (if provided) || thread.current_model
 ./run_tests.sh coverage
 ```
 
-**Test Stats**: 102 tests (85 pytest + 17 E2E), ~75% coverage
+**Test Stats**: 101+ tests (79 unit + 22 integration), ~80% coverage
 
 ## Project Structure
 
@@ -167,8 +204,6 @@ Effective Model = message.model (if provided) || thread.current_model
 │   └── utils/               # Token counter, logging
 ├── tests/                   # Test suite
 ├── scripts/                 # Shell scripts
-├── start.sh                 # Start services
-├── stop.sh                  # Stop services
 ├── run_tests.sh             # Test runner
 └── design.md                # Architecture docs
 ```
@@ -178,12 +213,13 @@ Effective Model = message.model (if provided) || thread.current_model
 ```
 ┌─────────────────────────────────────────────┐
 │              FastAPI Gateway                │
-│  /threads  /messages  /summaries            │
+│  /threads  /messages  /collaborate  /usage  │
 └──────────────────┬──────────────────────────┘
                    │
 ┌──────────────────▼──────────────────────────┐
 │           Business Logic                    │
 │  ThreadManager │ MessageHandler │ LLM Orch  │
+│  AgentCollaboration │ UsageTracker          │
 └──────────────────┬──────────────────────────┘
                    │
 ┌──────────────────▼──────────────────────────┐
@@ -193,7 +229,7 @@ Effective Model = message.model (if provided) || thread.current_model
                    │
 ┌──────────────────▼──────────────────────────┐
 │          PostgreSQL                         │
-│  threads │ messages │ summaries             │
+│  threads │ messages │ summaries │ usage     │
 └─────────────────────────────────────────────┘
 ```
 

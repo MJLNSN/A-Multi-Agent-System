@@ -116,6 +116,52 @@ class Summary(Base):
     )
 
 
+class TokenUsage(Base):
+    """
+    Token usage tracking model for monitoring API costs and usage patterns.
+    Records every LLM API call with token counts and cost estimates.
+    """
+    __tablename__ = "token_usage"
+    
+    usage_id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    thread_id = Column(
+        UUID(as_uuid=True),
+        ForeignKey("threads.thread_id", ondelete="SET NULL"),
+        nullable=True,
+        index=True
+    )
+    user_id = Column(String(255), nullable=True, index=True)
+    collaboration_id = Column(String(50), nullable=True, index=True)
+    
+    # Model information
+    model = Column(String(100), nullable=False, index=True)
+    
+    # Token counts
+    input_tokens = Column(Integer, nullable=False, default=0)
+    output_tokens = Column(Integer, nullable=False, default=0)
+    total_tokens = Column(Integer, nullable=False, default=0)
+    
+    # Cost in USD (calculated based on model pricing)
+    cost_usd = Column(JSONB, nullable=True)  # {"input": 0.001, "output": 0.002, "total": 0.003}
+    
+    # Operation type
+    operation_type = Column(String(50), nullable=False)
+    
+    # Additional metadata
+    extra_data = Column(JSONB, nullable=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    
+    __table_args__ = (
+        CheckConstraint(
+            operation_type.in_(["message", "summarization", "collaboration", "other"]),
+            name="check_operation_type"
+        ),
+        Index("idx_usage_model_date", "model", "created_at"),
+        Index("idx_usage_user_date", "user_id", "created_at"),
+        Index("idx_usage_operation", "operation_type", "created_at"),
+    )
+
+
 async def init_db():
     """
     Initialize the database by creating all tables.

@@ -15,7 +15,8 @@ from src.services.message_handler import MessageHandler
 from src.services.llm_orchestrator import LLMOrchestrator
 from src.services.summarization_engine import SummarizationEngine
 from src.services.agent_collaboration import AgentCollaborationService
-from src.routes import threads_router, messages_router, summaries_router
+from src.services.usage_tracker import UsageTracker
+from src.routes import threads_router, messages_router, summaries_router, usage_router
 from src.routes.collaboration import router as collaboration_router
 from src.config import settings
 from src.utils.logging import setup_logging, get_logger
@@ -47,15 +48,20 @@ async def lifespan(app: FastAPI):
     
     # Initialize services
     app.state.thread_manager = ThreadManager()
+    app.state.usage_tracker = UsageTracker()
     app.state.summarizer = SummarizationEngine(app.state.openrouter)
     app.state.llm_orchestrator = LLMOrchestrator(app.state.openrouter)
     app.state.message_handler = MessageHandler(
         app.state.llm_orchestrator,
-        app.state.summarizer
+        app.state.summarizer,
+        app.state.usage_tracker
     )
     # Initialize agent collaboration service (multi-agent orchestration)
-    app.state.collaboration_service = AgentCollaborationService(app.state.openrouter)
-    logger.info("services_initialized", features=["thread_management", "summarization", "agent_collaboration"])
+    app.state.collaboration_service = AgentCollaborationService(
+        app.state.openrouter,
+        app.state.usage_tracker
+    )
+    logger.info("services_initialized", features=["thread_management", "summarization", "agent_collaboration", "usage_tracking"])
     
     logger.info(
         "application_started",
@@ -118,6 +124,7 @@ app.include_router(threads_router, prefix="/api")
 app.include_router(messages_router, prefix="/api")
 app.include_router(summaries_router, prefix="/api")
 app.include_router(collaboration_router, prefix="/api")
+app.include_router(usage_router, prefix="/api")
 
 
 @app.get("/", tags=["Root"])

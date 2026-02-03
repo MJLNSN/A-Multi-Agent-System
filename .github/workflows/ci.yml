@@ -56,6 +56,7 @@ jobs:
                tests/test_summarization_engine.py \
                tests/test_message_handler.py \
                tests/test_agent_collaboration.py \
+               tests/test_usage_tracker.py \
                tests/test_performance.py \
                -v --tb=short
       continue-on-error: false
@@ -70,14 +71,15 @@ jobs:
         echo "  ✅ Token counting & trimming (10 tests)"
         echo "  ✅ OpenRouter adapter (mocked) (10 tests)"
         echo "  ✅ Thread manager (3 tests)"
-        echo "  ✅ LLM orchestrator (3 tests)"
+        echo "  ✅ LLM orchestrator (5 tests)"
         echo "  ✅ Summarization engine (9 tests)"
-        echo "  ✅ Message handler (7 tests)"
-        echo "  ✅ Agent collaboration (16 tests) - NEW!"
+        echo "  ✅ Message handler (9 tests)"
+        echo "  ✅ Agent collaboration (21 tests)"
+        echo "  ✅ Usage tracker & cost analysis (22 tests) - NEW!"
         echo "  ✅ Performance benchmarks (14 tests)"
         echo ""
         echo "⏭️  Tests Skipped (require real API key):"
-        echo "  - test_integration.py (8 tests - needs mock setup)"
-        echo "  - test_api.py (9 tests - needs mock setup)"
-        echo "  - E2E tests (tests/e2e_test.sh - needs OpenRouter API)"
+        echo "  - test_integration.py (needs real API)"
+        echo "  - test_api.py (needs real API)"
+        echo "  - E2E tests (needs OpenRouter API)"
 
