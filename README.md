@@ -1,5 +1,7 @@
 # Multi-Agent Chat Threading System
 
+[![CI](https://github.com/MJLNSN/A-Multi-Agent-System/actions/workflows/ci.yml/badge.svg)](https://github.com/MJLNSN/A-Multi-Agent-System/actions/workflows/ci.yml)
+
 A production-ready multi-agent chat service demonstrating threaded context management, LLM orchestration via OpenRouter, and intelligent auto-summarization.
 
 ## Features
