@@ -14,7 +14,9 @@ from src.services.thread_manager import ThreadManager
 from src.services.message_handler import MessageHandler
 from src.services.llm_orchestrator import LLMOrchestrator
 from src.services.summarization_engine import SummarizationEngine
+from src.services.agent_collaboration import AgentCollaborationService
 from src.routes import threads_router, messages_router, summaries_router
+from src.routes.collaboration import router as collaboration_router
 from src.config import settings
 from src.utils.logging import setup_logging, get_logger
 from src.models.registry import list_available_models
@@ -51,7 +53,9 @@ async def lifespan(app: FastAPI):
         app.state.llm_orchestrator,
         app.state.summarizer
     )
-    logger.info("services_initialized")
+    # Initialize agent collaboration service (multi-agent orchestration)
+    app.state.collaboration_service = AgentCollaborationService(app.state.openrouter)
+    logger.info("services_initialized", features=["thread_management", "summarization", "agent_collaboration"])
     
     logger.info(
         "application_started",
@@ -77,11 +81,22 @@ app = FastAPI(
     supports multiple LLMs via OpenRouter API, and implements auto-summarization.
     
     ## Features
-    - Thread-based conversation management
-    - Multiple LLM support (GPT-4, Claude, GPT-3.5)
-    - Real-time model switching within conversations
-    - Automatic conversation summarization
-    - Intelligent context management
+    - **Thread-based conversation management** - Persistent context per thread
+    - **Multiple LLM support** - GPT-4, Claude 3.5, GPT-3.5 via OpenRouter
+    - **Real-time model switching** - Switch models within conversations
+    - **Automatic summarization** - Compress context every 10 messages
+    - **Intelligent context management** - Token-aware trimming
+    
+    ## 🚀 Multi-Agent Collaboration (New!)
+    
+    The `/api/collaborate` endpoint demonstrates true multi-agent orchestration:
+    
+    1. **Planner Agent** (GPT-4) - Analyzes questions, creates response strategy
+    2. **Writer Agent** (Claude 3.5) - Generates detailed content based on plan
+    3. **Reviewer Agent** (GPT-4) - Reviews and polishes final output
+    
+    This showcases how multiple AI models can work together to produce higher-quality
+    outputs than any single model, implementing the **Planner → Writer → Reviewer** pattern.
     """,
     version="1.0.0",
     lifespan=lifespan,
@@ -102,6 +117,7 @@ app.add_middleware(
 app.include_router(threads_router, prefix="/api")
 app.include_router(messages_router, prefix="/api")
 app.include_router(summaries_router, prefix="/api")
+app.include_router(collaboration_router, prefix="/api")
 
 
 @app.get("/", tags=["Root"])

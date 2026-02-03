@@ -11,6 +11,40 @@ A production-ready multi-agent chat service demonstrating threaded context manag
 - **Real-time Model Switching** - Switch models mid-conversation
 - **Auto-Summarization** - Compress context every 10 messages
 - **Token Management** - Intelligent context trimming
+- **🚀 Multi-Agent Collaboration** - Planner → Writer → Reviewer pattern
+
+## 🌟 Multi-Agent Collaboration (Highlight Feature)
+
+True multi-agent orchestration where specialized AI agents work together:
+
+```
+User Query → [Planner] → [Writer] → [Reviewer] → Final Response
+               GPT-4      Claude      GPT-4
+```
+
+| Agent | Model | Role |
+|-------|-------|------|
+| **Planner** | GPT-4 | Analyzes question, creates response strategy |
+| **Writer** | Claude 3.5 | Generates detailed content following plan |
+| **Reviewer** | GPT-4 | Reviews and polishes the final output |
+
+### Example
+
+```bash
+curl -X POST http://localhost:8001/api/collaborate \
+  -H "Content-Type: application/json" \
+  -d '{
+    "query": "What are the key strategies for launching a SaaS product?",
+    "include_process": true
+  }'
+```
+
+**Response includes:**
+- `final_response`: Polished answer from all three agents
+- `collaboration_process`: Each agent's contribution (plan, draft, steps)
+- `metadata`: Token usage, timing, models used
+
+This demonstrates **real multi-agent orchestration** beyond simple model switching!
 
 ## Quick Start
 
@@ -53,6 +87,9 @@ cd scripts/
 | `/api/threads/{id}/messages` | POST | Send message |
 | `/api/threads/{id}/messages` | GET | Get history |
 | `/api/threads/{id}/summaries` | GET | Get summaries |
+| **`/api/collaborate`** | **POST** | **🚀 Multi-agent collaboration** |
+| `/api/agents` | GET | List collaboration agents |
+| `/api/agents/{role}` | PATCH | Update agent's model |
 
 ### Example
 

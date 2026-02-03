@@ -55,6 +55,7 @@ jobs:
                tests/test_llm_orchestrator.py \
                tests/test_summarization_engine.py \
                tests/test_message_handler.py \
+               tests/test_agent_collaboration.py \
                tests/test_performance.py \
                -v --tb=short
       continue-on-error: false
@@ -72,6 +73,7 @@ jobs:
         echo "  ✅ LLM orchestrator (3 tests)"
         echo "  ✅ Summarization engine (9 tests)"
         echo "  ✅ Message handler (7 tests)"
+        echo "  ✅ Agent collaboration (16 tests) - NEW!"
         echo "  ✅ Performance benchmarks (14 tests)"
         echo ""
         echo "⏭️  Tests Skipped (require real API key):"
