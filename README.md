@@ -22,9 +22,10 @@ A production-ready multi-agent chat service demonstrating threaded context manag
 ### Setup
 
 ```bash
-# Clone and configure
-git clone <repo-url> && cd multi-agent-chat
+git https://github.com/MJLNSN/A-Multi-Agent-System && cd multi-agent-chat
+
 cp env.example .env
+
 # Edit .env: add OPENROUTER_API_KEY
 
 cd scripts/
@@ -32,7 +33,7 @@ cd scripts/
 # Start (first time)
 ./start.sh --install
 
-# Start (subsequent)
+# Start
 ./start.sh
 
 # Stop
