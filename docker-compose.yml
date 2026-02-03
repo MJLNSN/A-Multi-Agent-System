@@ -1,0 +1,58 @@
+# Multi-Agent Chat Threading System
+# Docker Compose configuration for local development
+
+version: '3.8'
+
+services:
+  # API Service
+  api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    ports:
+      - "8000:8000"
+    environment:
+      - ENV=development
+      - DATABASE_URL=postgresql+asyncpg://chatuser:chatpass@db:5432/chatdb
+      - OPENROUTER_API_KEY=${OPENROUTER_API_KEY}
+      - DEFAULT_MODEL=openai/gpt-4-turbo
+      - SUMMARIZATION_MODEL=openai/gpt-4-turbo
+      - SUMMARIZATION_MESSAGE_THRESHOLD=10
+      - MAX_CONTEXT_MESSAGES=20
+      - MAX_CONTEXT_TOKENS=8000
+      - LOG_LEVEL=INFO
+      - LOG_FORMAT=json
+    depends_on:
+      db:
+        condition: service_healthy
+    restart: unless-stopped
+    networks:
+      - chat-network
+
+  # PostgreSQL Database
+  db:
+    image: postgres:15-alpine
+    environment:
+      - POSTGRES_USER=chatuser
+      - POSTGRES_PASSWORD=chatpass
+      - POSTGRES_DB=chatdb
+    ports:
+      - "5433:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U chatuser -d chatdb"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+    networks:
+      - chat-network
+
+networks:
+  chat-network:
+    driver: bridge
+
+volumes:
+  postgres_data:
+
