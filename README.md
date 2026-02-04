@@ -10,8 +10,8 @@ A production-ready multi-agent chat service demonstrating threaded context manag
 - **Multi-LLM Support** - GPT-4, Claude 3.5, GPT-3.5 via OpenRouter
 - **Real-time Model Switching** - Switch models mid-conversation
 - **Auto-Summarization** - Compress context every 10 messages
-- **🚀 Multi-Agent Collaboration** - Planner → Writer → Reviewer pattern
-- **💰 Token & Cost Tracking** - Enterprise-grade usage monitoring
+- **Multi-Agent Collaboration** - Planner → Writer → Reviewer pattern
+- **Token & Cost Tracking** - Enterprise-grade usage monitoring
 
 ## Quick Start
 
