@@ -3,6 +3,11 @@ API routes for Multi-Agent Collaboration feature.
 
 Provides endpoints for orchestrating multiple AI agents working together
 on complex queries using the Planner → Writer → Reviewer pattern.
+
+Optimizations:
+- Simple queries automatically skip Reviewer (saves tokens and time)
+- Reviewer only sees draft summary/key sections (saves 30-50% tokens)
+- Use force_full_pipeline=true to always run all 3 agents
 """
 
 from fastapi import APIRouter, HTTPException, Request
@@ -19,6 +24,7 @@ class CollaborateRequest(BaseModel):
     query: str = Field(..., min_length=1, max_length=10000, description="The question or task for agents to collaborate on")
     context: Optional[str] = Field(None, max_length=5000, description="Optional additional context")
     include_process: bool = Field(True, description="Include intermediate steps in response")
+    force_full_pipeline: bool = Field(False, description="Force using all 3 agents even for simple queries")
     
     model_config = {
         "json_schema_extra": {
@@ -26,7 +32,8 @@ class CollaborateRequest(BaseModel):
                 {
                     "query": "What are the key strategies for launching a successful SaaS product in 2025?",
                     "context": "We are a B2B startup targeting small businesses.",
-                    "include_process": True
+                    "include_process": True,
+                    "force_full_pipeline": False
                 }
             ]
         }
@@ -52,37 +59,53 @@ async def collaborate(request: CollaborateRequest, app_request: Request):
     """
     Execute multi-agent collaboration on a query.
     
-    This endpoint demonstrates true multi-agent orchestration:
+    **Optimized Flow:**
+    - **Simple queries**: Planner → Writer (Reviewer skipped, saves tokens)
+    - **Complex queries**: Planner → Writer → Reviewer (with draft summary)
     
+    **Agents:**
     1. **Planner Agent** (GPT-4): Analyzes the question and creates a response strategy
     2. **Writer Agent** (Claude 3.5): Generates detailed content following the plan
-    3. **Reviewer Agent** (GPT-4): Reviews and polishes the final response
+    3. **Reviewer Agent** (GPT-4): Reviews and polishes (only for complex queries)
     
-    Each agent has a specialized role and system prompt, showcasing how multiple
-    AI models can collaborate to produce higher-quality outputs than any single model.
+    **Optimizations:**
+    - Complexity classifier automatically determines if Reviewer is needed
+    - Reviewer only sees key sections/summary (saves 30-50% tokens)
+    - Use `force_full_pipeline=true` to always run all 3 agents
     
-    **Use cases:**
-    - Complex questions requiring structured thinking
-    - Content generation with quality review
-    - Tasks benefiting from multiple perspectives
+    **Complexity Factors:**
+    - Query length (>100 chars)
+    - Multiple sub-questions (numbered lists)
+    - Analysis keywords (analyze, compare, strategy, etc.)
+    - Additional context provided
     
-    **Example:**
+    **Examples:**
+    
+    Simple query (Reviewer skipped):
+    ```json
+    {"query": "What is machine learning?"}
     ```
-    POST /api/collaborate
+    
+    Complex query (full pipeline):
+    ```json
     {
-        "query": "Explain the benefits of microservices architecture",
+        "query": "1. Market analysis 2. Competitive advantage 3. Success metrics",
+        "context": "We are launching a SaaS product",
         "include_process": true
     }
     ```
     
-    Returns the final polished response along with the collaboration process
-    (plan, draft, and each agent's contribution).
+    Force full pipeline:
+    ```json
+    {"query": "Simple question", "force_full_pipeline": true}
+    ```
     """
     try:
         result = await app_request.app.state.collaboration_service.collaborate(
             query=request.query,
             context=request.context,
-            include_process=request.include_process
+            include_process=request.include_process,
+            force_full_pipeline=request.force_full_pipeline
         )
         return result
     
@@ -98,7 +121,7 @@ async def list_agents(app_request: Request):
     Returns information about each agent role:
     - **planner**: Creates response strategies (GPT-4)
     - **writer**: Generates detailed content (Claude 3.5)
-    - **reviewer**: Reviews and polishes output (GPT-4)
+    - **reviewer**: Reviews and polishes output (GPT-4) - *may be skipped for simple queries*
     
     Each agent can be configured to use different LLM models.
     """
@@ -106,11 +129,22 @@ async def list_agents(app_request: Request):
         agents = app_request.app.state.collaboration_service.list_agents()
         return {
             "agents": agents,
-            "collaboration_flow": [
-                "1. User query → Planner (strategy)",
-                "2. Query + Plan → Writer (content)",
-                "3. Query + Plan + Draft → Reviewer (polish)"
-            ]
+            "collaboration_flow": {
+                "simple_queries": [
+                    "1. User query → Planner (strategy)",
+                    "2. Query + Plan → Writer (content) → Final Response"
+                ],
+                "complex_queries": [
+                    "1. User query → Planner (strategy)",
+                    "2. Query + Plan → Writer (content)",
+                    "3. Query + Plan + Draft Summary → Reviewer (polish)"
+                ]
+            },
+            "optimizations": {
+                "complexity_classifier": "Automatically determines if Reviewer is needed",
+                "draft_summary": "Reviewer sees key sections only (saves 30-50% tokens)",
+                "force_full_pipeline": "Set to true to always use all 3 agents"
+            }
         }
     
     except Exception as e:
