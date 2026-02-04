@@ -81,29 +81,48 @@ cd scripts
 | `/api/usage/models` | GET | Get model comparison |
 | `/api/usage/pricing` | GET | Get model pricing |
 
-## 🚀 Multi-Agent Collaboration
+## Multi-Agent Collaboration
 
 True multi-agent orchestration where specialized AI agents work together:
 
 ```
-User Query → [Planner] → [Writer] → [Reviewer] → Final Response
-               GPT-4      Claude      GPT-4
+Simple Query:  User → [Planner] → [Writer] → Final Response
+
+
+Complex Query: User → [Planner] → [Writer] → [Reviewer] → Final Response
+                       GPT-4      Claude       GPT-4
 ```
 
 | Agent | Model | Role |
 |-------|-------|------|
 | **Planner** | GPT-4 | Analyzes question, creates response strategy |
 | **Writer** | Claude 3.5 | Generates detailed content following plan |
-| **Reviewer** | GPT-4 | Reviews and polishes the final output |
+| **Reviewer** | GPT-4 | Reviews and polishes (complex queries only) |
+
 
 ### Example
 
 ```bash
+# Simple query (Reviewer skipped automatically)
+curl -X POST http://localhost:8001/api/collaborate \
+  -H "Content-Type: application/json" \
+  -d '{"query": "What is machine learning?"}'
+
+# Complex query (full pipeline)
 curl -X POST http://localhost:8001/api/collaborate \
   -H "Content-Type: application/json" \
   -d '{
-    "query": "What are the key strategies for launching a SaaS product?",
+    "query": "1. Market strategy 2. Competitive advantage 3. Success metrics",
+    "context": "We are a startup launching a SaaS product",
     "include_process": true
+  }'
+
+# Force full pipeline on simple query
+curl -X POST http://localhost:8001/api/collaborate \
+  -H "Content-Type: application/json" \
+  -d '{
+    "query": "What is AI?",
+    "force_full_pipeline": true
   }'
 ```
 

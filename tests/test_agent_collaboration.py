@@ -72,7 +72,7 @@ class TestAgentCollaborationService:
     
     @pytest.mark.asyncio
     async def test_collaborate_calls_all_agents(self, service, mock_adapter):
-        """Test that collaboration calls all three agents in order."""
+        """Test that collaboration calls all three agents in order when forced."""
         # Setup mock responses
         mock_adapter.chat_completion.side_effect = [
             {"content": "Plan: 1. Point A, 2. Point B", "tokens": 50},
@@ -80,7 +80,12 @@ class TestAgentCollaborationService:
             {"content": "Final polished response", "tokens": 150}
         ]
         
-        result = await service.collaborate("Test question", include_process=True)
+        # Use force_full_pipeline=True to ensure all agents are called
+        result = await service.collaborate(
+            "Test question", 
+            include_process=True,
+            force_full_pipeline=True
+        )
         
         # Should call adapter 3 times (Planner, Writer, Reviewer)
         assert mock_adapter.chat_completion.call_count == 3
@@ -93,14 +98,15 @@ class TestAgentCollaborationService:
     
     @pytest.mark.asyncio
     async def test_collaborate_result_structure(self, service, mock_adapter):
-        """Test collaboration result has correct structure."""
+        """Test collaboration result has correct structure when forced full pipeline."""
         mock_adapter.chat_completion.side_effect = [
             {"content": "Plan", "tokens": 50},
             {"content": "Draft", "tokens": 200},
             {"content": "Final", "tokens": 150}
         ]
         
-        result = await service.collaborate("Test")
+        # Use force_full_pipeline=True to test full structure
+        result = await service.collaborate("Test", force_full_pipeline=True)
         
         # Check metadata
         assert "total_tokens" in result["metadata"]
@@ -113,6 +119,10 @@ class TestAgentCollaborationService:
         assert "plan" in result["collaboration_process"]
         assert "draft" in result["collaboration_process"]
         assert "steps" in result["collaboration_process"]
+        
+        # Check complexity info is present
+        assert "complexity" in result["metadata"]
+        assert "optimization" in result["metadata"]
     
     @pytest.mark.asyncio
     async def test_collaborate_without_process(self, service, mock_adapter):
@@ -148,7 +158,7 @@ class TestAgentCollaborationService:
     
     @pytest.mark.asyncio
     async def test_collaborate_step_order(self, service, mock_adapter):
-        """Test that agents are called in correct order."""
+        """Test that agents are called in correct order when forced full pipeline."""
         call_order = []
         
         async def track_calls(**kwargs):
@@ -158,13 +168,129 @@ class TestAgentCollaborationService:
         
         mock_adapter.chat_completion.side_effect = track_calls
         
-        await service.collaborate("Test")
+        # Use force_full_pipeline=True to ensure all agents are called
+        await service.collaborate("Test", force_full_pipeline=True)
         
         # Should be: Planner (GPT-4), Writer (Claude), Reviewer (GPT-4)
         assert len(call_order) == 3
         assert "gpt-4" in call_order[0].lower()  # Planner
         assert "claude" in call_order[1].lower()  # Writer
         assert "gpt-4" in call_order[2].lower()  # Reviewer
+
+
+class TestComplexityClassifier:
+    """Test complexity classification and optimization features."""
+    
+    @pytest.fixture
+    def mock_adapter(self):
+        """Create a mock OpenRouter adapter."""
+        adapter = AsyncMock()
+        adapter.chat_completion = AsyncMock()
+        return adapter
+    
+    @pytest.fixture
+    def service(self, mock_adapter):
+        """Create a service instance with mock adapter."""
+        return AgentCollaborationService(mock_adapter)
+    
+    def test_simple_query_classification(self, service):
+        """Test that simple queries are classified correctly."""
+        # Simple short query
+        result = service.classify_complexity("What is AI?")
+        assert result["is_complex"] == False
+        assert result["score"] < 4
+        assert result["recommendation"] == "skip_reviewer"
+    
+    def test_complex_query_classification(self, service):
+        """Test that complex queries are classified correctly."""
+        # Complex query with multiple sub-questions and analysis keywords
+        query = """
+        分析我们的市场策略：
+        1. 市场进入策略
+        2. 竞争优势分析
+        3. 成功指标评估
+        """
+        result = service.classify_complexity(query, context="我们是创业公司")
+        assert result["is_complex"] == True
+        assert result["score"] >= 4
+        assert result["recommendation"] == "full_pipeline"
+        assert "multi_questions" in str(result["reasons"])
+    
+    def test_context_increases_complexity(self, service):
+        """Test that adding context increases complexity score."""
+        query = "How to build a product?"
+        
+        result_no_context = service.classify_complexity(query)
+        result_with_context = service.classify_complexity(
+            query, 
+            context="We are a 15-person startup with $2M funding targeting enterprise customers"
+        )
+        
+        assert result_with_context["score"] > result_no_context["score"]
+    
+    @pytest.mark.asyncio
+    async def test_simple_query_skips_reviewer(self, service, mock_adapter):
+        """Test that simple queries skip the reviewer agent."""
+        mock_adapter.chat_completion.side_effect = [
+            {"content": "Plan", "tokens": 50},
+            {"content": "Draft", "tokens": 200}
+        ]
+        
+        # Simple query should skip reviewer
+        result = await service.collaborate("What is AI?", include_process=True)
+        
+        # Should only call 2 agents (Planner, Writer)
+        assert mock_adapter.chat_completion.call_count == 2
+        
+        # Verify metadata shows reviewer was skipped
+        assert result["metadata"]["complexity"]["reviewer_used"] == False
+        assert result["metadata"]["optimization"]["reviewer_skipped"] == True
+        
+        # Final response should be the writer's draft
+        assert result["final_response"] == "Draft"
+    
+    @pytest.mark.asyncio
+    async def test_force_full_pipeline_overrides_optimization(self, service, mock_adapter):
+        """Test that force_full_pipeline=True uses all agents regardless of complexity."""
+        mock_adapter.chat_completion.side_effect = [
+            {"content": "Plan", "tokens": 50},
+            {"content": "Draft", "tokens": 200},
+            {"content": "Final", "tokens": 150}
+        ]
+        
+        # Simple query but forced full pipeline
+        result = await service.collaborate(
+            "What is AI?", 
+            include_process=True,
+            force_full_pipeline=True
+        )
+        
+        # Should call all 3 agents
+        assert mock_adapter.chat_completion.call_count == 3
+        assert result["metadata"]["complexity"]["reviewer_used"] == True
+        assert result["metadata"]["optimization"]["reviewer_skipped"] == False
+    
+    def test_extract_key_sections(self, service):
+        """Test draft summary extraction."""
+        draft = """
+        ## 一、市场分析
+        这是市场分析的详细内容，包含很多信息。
+        
+        ## 二、竞争优势
+        1. 第一个优势点
+        2. 第二个优势点
+        3. 第三个优势点
+        
+        ## 三、执行建议
+        这是执行建议的详细说明。
+        """
+        
+        summary = service.extract_key_sections(draft, max_chars=500)
+        
+        # Summary should be shorter than original
+        assert len(summary) <= len(draft)
+        # Should contain section headers
+        assert "市场分析" in summary or "竞争优势" in summary
 
 
 class TestAgentRole:
